@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Camera Control</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background-color: #f4f4f9; padding: 20px; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .hidden { display: none; }
+        video { width: 100%; border-radius: 10px; background: #000; margin-top: 10px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; margin: 5px; }
+        .btn-user { background-color: #28a745; color: white; }
+        .btn-admin { background-color: #007bff; color: white; }
+        input { padding: 10px; width: 80%; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        #status { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="role-selection">
+    <h2>Select Your Role</h2>
+    <button class="btn-user" onclick="startUser()">I am User (Phone)</button>
+    <button class="btn-admin" onclick="startAdmin()">I am Admin (PC)</button>
+</div>
+
+<!-- User Section -->
+<div class="container hidden" id="user-section">
+    <h2>User Panel</h2>
+    <p>Your ID: <span id="my-id" style="font-weight: bold; color: blue;">Connecting...</span></p>
+    <p id="status">Waiting for Admin to connect...</p>
+    <video id="localVideo" autoplay playsinline muted></video>
+</div>
+
+<!-- Admin Section -->
+<div class="container hidden" id="admin-section">
+    <h2>Admin Panel</h2>
+    <input type="text" id="targetId" placeholder="Enter User ID here">
+    <br>
+    <button class="btn-admin" onclick="connectToUser()">Watch User Camera</button>
+    <video id="remoteVideo" autoplay playsinline></video>
+</div>
+
+<script>
+    let peer;
+
+    // --- User Side Logic ---
+    function startUser() {
+        document.getElementById('role-selection').classList.add('hidden');
+        document.getElementById('user-section').classList.remove('hidden');
+
+        peer = new Peer();
+
+        peer.on('open', (id) => {
+            document.getElementById('my-id').innerText = id;
+        });
+
+        peer.on('call', (call) => {
+            // ব্রাউজার স্বয়ংক্রিয়ভাবে পারমিশন পপআপ দেখাবে
+            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+            .then((stream) => {
+                document.getElementById('localVideo').srcObject = stream;
+                document.getElementById('status').innerText = "Status: Connected. Admin is watching.";
+                document.getElementById('status').style.color = "green";
+                call.answer(stream); // ভিডিও পাঠানো শুরু
+            })
+            .catch(err => {
+                alert("Permission Denied. Admin cannot see the camera.");
+                console.error(err);
+            });
+        });
+    }
+
+    // --- Admin Side Logic ---
+    function startAdmin() {
+        document.getElementById('role-selection').classList.add('hidden');
+        document.getElementById('admin-section').classList.remove('hidden');
+        peer = new Peer();
+    }
+
+    function connectToUser() {
+        const targetId = document.getElementById('targetId').value;
+        if (!targetId) {
+            alert("Please enter a User ID first!");
+            return;
+        }
+
+        // অ্যাডমিন কোনো ভিডিও পাঠাবে না (null), শুধু রিসিভ করবে
+        const call = peer.call(targetId, null);
+
+        call.on('stream', (remoteStream) => {
+            const remoteVideo = document.getElementById('remoteVideo');
+            remoteVideo.srcObject = remoteStream;
+        });
+
+        call.on('error', (err) => {
+            alert("Connection Failed: " + err);
+        });
+    }
+</script>
+
+</body>
+</html>

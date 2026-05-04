@@ -3,76 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Camera Control</title>
+    <title>WebRTC CCTV System</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; background-color: #f4f4f9; padding: 20px; }
-        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; shadow: 0 0 10px rgba(0,0,0,0.1); }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background-color: #1a1a2e; color: white; padding: 20px; }
+        .container { max-width: 900px; margin: auto; background: #16213e; padding: 20px; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         .hidden { display: none; }
-        video { width: 100%; border-radius: 10px; background: #000; margin-top: 10px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; margin: 5px; }
-        .btn-user { background-color: #28a745; color: white; }
-        .btn-admin { background-color: #007bff; color: white; }
-        input { padding: 10px; width: 80%; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        #status { color: red; font-weight: bold; }
+        
+        /* User Side */
+        #localVideo { width: 100%; max-width: 400px; border-radius: 10px; border: 2px solid #0f3460; margin-top: 10px; transform: scaleX(-1); }
+        
+        /* Admin Side - CCTV Grid */
+        #cctv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; }
+        .video-box { background: #0f3460; padding: 10px; border-radius: 10px; position: relative; }
+        video { width: 100%; border-radius: 5px; background: black; }
+        .video-label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.6); padding: 2px 8px; font-size: 12px; border-radius: 4px; }
+
+        button { padding: 12px 25px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; margin: 10px; transition: 0.3s; }
+        .btn-user { background-color: #e94560; color: white; }
+        .btn-admin { background-color: #0f3460; color: white; border: 1px solid #e94560; }
+        .btn-user:hover, .btn-admin:hover { opacity: 0.8; transform: scale(1.05); }
+        
+        input { padding: 12px; width: 60%; border-radius: 5px; border: none; outline: none; margin-bottom: 10px; }
+        #status { color: #e94560; font-weight: bold; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-<div class="container" id="role-selection">
-    <h2>Select Your Role</h2>
-    <button class="btn-user" onclick="startUser()">I am User (Phone)</button>
-    <button class="btn-admin" onclick="startAdmin()">I am Admin (PC)</button>
+<div id="role-selection" class="container">
+    <h1>CCTV Monitoring System</h1>
+    <p>Choose your role to continue</p>
+    <button class="btn-user" onclick="startUser()">I am User (Camera Device)</button>
+    <button class="btn-admin" onclick="startAdmin()">I am Admin (Monitoring PC)</button>
 </div>
 
 <!-- User Section -->
-<div class="container hidden" id="user-section">
-    <h2>User Panel</h2>
-    <p>Your ID: <span id="my-id" style="font-weight: bold; color: blue;">Connecting...</span></p>
-    <p id="status">Waiting for Admin to connect...</p>
+<div id="user-section" class="container hidden">
+    <h2>Camera Active</h2>
+    <p>Your Monitoring ID: <span id="my-id" style="color: #e94560; font-size: 20px; letter-spacing: 2px;">Connecting...</span></p>
+    <p id="status">Starting camera...</p>
     <video id="localVideo" autoplay playsinline muted></video>
+    <p style="font-size: 12px; color: #888;">Keep this page open for the admin to see the feed.</p>
 </div>
 
 <!-- Admin Section -->
-<div class="container hidden" id="admin-section">
-    <h2>Admin Panel</h2>
-    <input type="text" id="targetId" placeholder="Enter User ID here">
-    <br>
-    <button class="btn-admin" onclick="connectToUser()">Watch User Camera</button>
-    <video id="remoteVideo" autoplay playsinline></video>
+<div id="admin-section" class="container hidden">
+    <h2>Admin CCTV Dashboard</h2>
+    <div style="margin-bottom: 20px;">
+        <input type="text" id="targetId" placeholder="Enter User ID to add...">
+        <button class="btn-user" onclick="connectToUser()">Add to Grid</button>
+    </div>
+    
+    <div id="cctv-grid">
+        <!-- Videos will appear here -->
+    </div>
 </div>
 
 <script>
     let peer;
+    let localStream;
 
-    // --- User Side Logic ---
-    function startUser() {
+    // --- USER SIDE LOGIC ---
+    async function startUser() {
         document.getElementById('role-selection').classList.add('hidden');
         document.getElementById('user-section').classList.remove('hidden');
 
-        peer = new Peer();
-
-        peer.on('open', (id) => {
-            document.getElementById('my-id').innerText = id;
-        });
-
-        peer.on('call', (call) => {
-            // ব্রাউজার স্বয়ংক্রিয়ভাবে পারমিশন পপআপ দেখাবে
-            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-            .then((stream) => {
-                document.getElementById('localVideo').srcObject = stream;
-                document.getElementById('status').innerText = "Status: Connected. Admin is watching.";
-                document.getElementById('status').style.color = "green";
-                call.answer(stream); // ভিডিও পাঠানো শুরু
-            })
-            .catch(err => {
-                alert("Permission Denied. Admin cannot see the camera.");
-                console.error(err);
+        try {
+            // ১. প্রথমেই ক্যামেরা পারমিশন নেয়া (Front Camera focus)
+            localStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user" }, 
+                audio: false 
             });
-        });
+            document.getElementById('localVideo').srcObject = localStream;
+            document.getElementById('status').innerText = "Status: Camera Ready. Waiting for Admin...";
+            document.getElementById('status').style.color = "#4caf50";
+
+            // ২. PeerJS কানেকশন শুরু
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                document.getElementById('my-id').innerText = id;
+            });
+
+            // ৩. যখনই এডমিন কল করবে, অটোমেটিক স্ট্রীম পাঠানো
+            peer.on('call', (call) => {
+                call.answer(localStream); // পারমিশন আগে নেয়া থাকায় সরাসরি উত্তর দেবে
+                document.getElementById('status').innerText = "Status: LIVE - Admin is watching";
+            });
+
+        } catch (err) {
+            alert("Camera Permission Denied! Please allow camera access.");
+            console.error(err);
+        }
     }
 
-    // --- Admin Side Logic ---
+    // --- ADMIN SIDE LOGIC ---
     function startAdmin() {
         document.getElementById('role-selection').classList.add('hidden');
         document.getElementById('admin-section').classList.remove('hidden');
@@ -80,23 +105,53 @@
     }
 
     function connectToUser() {
-        const targetId = document.getElementById('targetId').value;
+        const targetId = document.getElementById('targetId').value.trim();
         if (!targetId) {
-            alert("Please enter a User ID first!");
+            alert("Please enter a User ID!");
             return;
         }
 
-        // অ্যাডমিন কোনো ভিডিও পাঠাবে না (null), শুধু রিসিভ করবে
+        // চেক করা যাতে একই আইডি দুইবার এড না হয়
+        if (document.getElementById("video-" + targetId)) {
+            alert("This user is already in the grid!");
+            return;
+        }
+
+        // অ্যাডমিন কল করবে (কোনো স্ট্রীম ছাড়াই)
         const call = peer.call(targetId, null);
+        
+        // ভিডিও বক্স তৈরি করা
+        createVideoBox(targetId);
 
         call.on('stream', (remoteStream) => {
-            const remoteVideo = document.getElementById('remoteVideo');
-            remoteVideo.srcObject = remoteStream;
+            const videoElement = document.getElementById("vid-el-" + targetId);
+            videoElement.srcObject = remoteStream;
         });
 
         call.on('error', (err) => {
             alert("Connection Failed: " + err);
+            removeVideoBox(targetId);
         });
+
+        document.getElementById('targetId').value = ""; // ক্লিয়ার ইনপুট
+    }
+
+    function createVideoBox(id) {
+        const grid = document.getElementById('cctv-grid');
+        const box = document.createElement('div');
+        box.className = 'video-box';
+        box.id = "video-" + id;
+        box.innerHTML = `
+            <div class="video-label">User: ${id}</div>
+            <video id="vid-el-${id}" autoplay playsinline></video>
+            <button style="font-size:10px; background:red; color:white; padding:2px 5px; margin-top:5px;" onclick="removeVideoBox('${id}')">Remove</button>
+        `;
+        grid.appendChild(box);
+    }
+
+    function removeVideoBox(id) {
+        const box = document.getElementById("video-" + id);
+        if (box) box.remove();
     }
 </script>
 
